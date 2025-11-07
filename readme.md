@@ -41,168 +41,245 @@ Regras do jogo:
 - Vitória: todas as 104 cartas foram organizadas e removidas.
 - Derrota: o jogador não consegue mais fazer movimentos válidos e não há mais cartas no estoque.
 
-### Diagrama UML
+### 1. Diagrama de Classes – Núcleo do Jogo
 ```mermaid
 classDiagram
     direction LR
 
-    class Carta {
-        +valor: int
-        +naipe: Naipe
-        +virada: bool
-        +id: str
-        +__repr__() str
-        +mesmo_naipe(c: Carta) bool
-        +um_abaixo_de(c: Carta) bool
-    }
-
-    class Naipe {
+    class Suit {
         <<enumeration>>
-        ESPADAS
-        COPAS
+        +S: str
+        +H: str
     }
 
-    class Pilha {
-        +cartas: List<Carta>
-        +topo() Carta
-        +vazia() bool
-        +tamanho() int
-        +pode_receber(seq: Sequencia) bool
-        +push_seq(seq: Sequencia) void
-        +pop_n(n: int) Sequencia
-    }
-    <<abstract>> Pilha
-
-    class Coluna {
-        +revele_topo_se_preciso() void
-        +subsequencia_movivel(desde_index: int) Sequencia
+    class Card {
+        +value: int
+        +suit: str
+        +face_up: bool
+        +id: str
+        +label() str
+        +one_below(other: Card) bool
     }
 
-    class Estoque {
-        +disponivel() bool
-        +dar_10(colunas: List<Coluna>) void
+    class Sequence {
+        +cards: List<Card>
+        +is_desc_same_suit() bool
+        +top() Card
+        +base() Card
+        +size() int
     }
 
-    class Baralho {
-        -cartas: List<Carta>
-        +criar_doispacos() Baralho
-        +embaralhar(rng) void
-        +comprar() Carta
-        +restantes() int
-    }
-
-    class Sequencia {
-        +cartas: List<Carta>
-        +eh_descendente_mesmo_naipe() bool
-        +tamanho() int
-        +base() Carta
-        +topo() Carta
-    }
-
-    class Jogo {
-        +colunas: List<Coluna>
-        +estoque: Estoque
-        +sequencias_removidas: int
-        +historico: List<Movimento>
-        +iniciar(seed) void
-        +mover(col_i: int, idx: int, col_j: int) bool
-        +distribuir() bool
-        +checar_e_remover_completas(col: Coluna) int
-        +ha_movimentos_validos() bool
-        +vitoria() bool
-        +desfazer() bool
-    }
-
-    class Movimento {
+    class Move {
         +origem_col: int
         +origem_idx: int
         +destino_col: int
-        +seq: Sequencia
-        +gerou_remocao: bool
-        +viradas_no_fim: List<Carta>
+        +qtd_cartas: int
+        +viradas_no_fim: List<Card>
+        +seq_removida: List<Card>
+        +tipo: str  "move|deal"
+        +deal_cartas: List<(int, Card)>
     }
 
-    Pilha <|-- Coluna
-    Pilha <|-- Estoque
-    Coluna o-- Sequencia
-    Sequencia *-- Carta
-    Jogo o-- Coluna
-    Jogo o-- Estoque
-    Jogo o-- Movimento
-    Baralho o-- Carta
+    class Column {
+        +cards: List<Card>
+        +push_seq(seq: Sequence) void
+        +pop_n(n: int) Sequence
+        +top() Card
+        +empty() bool
+        +reveal_top_if_needed() void
+        +movable_subsequence_from(idx: int) Sequence
+    }
+
+    class Stock {
+        +cards: List<Card>
+        +available() bool
+    }
+
+    class Deck {
+        +create_two_suits_double_deck() List<Card$
+    }
+
+    class Game {
+        -rng: Random
+        +columns: List<Column>
+        +stock: Stock
+        +removed_sequences: int
+        +historico: List<Move>
+        +_start() void
+        +can_receive(dest: Column, seq: Sequence) bool
+        +move(col_i: int, idx: int, col_j: int) bool
+        +undo() bool
+        +deal() bool
+        +reset(seed: Optional[int]) void
+    }
+
+    %% Relações
+    Sequence *-- Card
+    Column *-- Card
+    Stock *-- Card
+    Move *-- Card
+
+    Game o-- Column
+    Game o-- Stock
+    Game o-- Move
+    Game ..> Deck
+    Game ..> Sequence
+    Game ..> Suit
 ```
 
----
-
-### Estados e Fluxo Essencial
-
-```mermaid
-stateDiagram-v2
-    [*] --> Iniciando
-    Iniciando --> Jogando: distribuir inicial (10 colunas)
-    Jogando --> Distribuindo: ação "dar 10" (todas colunas não vazias?)
-    Distribuindo --> Jogando
-    Jogando --> Vitoria: 8 sequências removidas
-    Jogando --> Travado: sem movimentos e estoque vazio
-```
----
-
-### Diagrama de Sequência
-
-```mermaid
-sequenceDiagram
-    participant UI
-    participant Jogo
-    participant ColOrigem as Coluna[origem]
-    participant ColDestino as Coluna[destino]
-
-    UI->>Jogo: mover(col_i, idx, col_j)
-    Jogo->>ColOrigem: subsequencia_movivel(idx)
-    ColOrigem-->>Jogo: Sequencia(seq) (descendente e mononaipe?)
-    Jogo->>ColDestino: pode_receber(seq)?
-    ColDestino-->>Jogo: true
-    Jogo->>ColOrigem: pop_n(seq.tamanho())
-    Jogo->>ColDestino: push_seq(seq)
-    Jogo->>Jogo: checar_e_remover_completas(ColDestino)
-    Jogo->>ColOrigem: revele_topo_se_preciso()
-    Jogo-->>UI: sucesso
-```
----
-
-### Camada de Visualização
-
+### 2. Diagrama de Classes – Incluindo a Camada Visual (Arcade)
 ```mermaid
 classDiagram
     direction LR
 
-    class CardSprite {
-        +model: Carta
-        +on_draw()
-        +on_update(dt)
-        +hitbox
+    class Game {
+        +columns: List<Column>
+        +stock: Stock
+        +removed_sequences: int
+        +historico: List<Move>
+        +move(col_i, idx, col_j) bool
+        +deal() bool
+        +undo() bool
+        +reset(seed) void
     }
 
-    class DragController {
-        +seq_em_drag: Sequencia
-        +origem_col: int
-        +origem_idx: int
-        +start_drag(x, y)
-        +update_drag(x, y)
-        +drop(target_col: int)
+    class Column {
+        +cards: List<Card>
+    }
+
+    class Card {
+        +value: int
+        +suit: str
+        +face_up: bool
+        +label() str
+    }
+
+    class Sequence {
+        +cards: List<Card>
+    }
+
+    class Move {
+        +tipo: str
+    }
+
+    class Stock {
+        +cards: List<Card>
+    }
+
+    class DragState {
+        +active: bool
+        +from_col: int
+        +from_idx: int
+        +seq: Sequence
+        +mouse_dx: float
+        +mouse_dy: float
+        +valid_target_col: int
+        +reset() void
+    }
+
+    class ArcadeWindow {
+        <<abstract>>
     }
 
     class SpiderView {
-        +jogo: Jogo
-        +sprites: SpriteList
-        +on_draw()
-        +on_mouse_press()
-        +on_mouse_release()
-        +on_key_press()
+        +game: Game
+        +drag: DragState
+        +_mouse_x: float
+        +_mouse_y: float
+        +on_draw() void
+        +on_mouse_press(x,y,btn,mod) void
+        +on_mouse_motion(x,y,dx,dy) void
+        +on_mouse_release(x,y,btn,mod) void
+        +on_key_press(symbol,mod) void
+        +pick_column_card(x,y) (int,int)
+        +target_column_from_point(x,y) int
+        +draw_card(card, col_i, idx, dragging, dx, dy) void
     }
 
     SpiderView --|> ArcadeWindow
-    CardSprite o-- Carta
-    SpiderView o-- Jogo
-    SpiderView o-- CardSprite
-    SpiderView o-- DragController
+
+    SpiderView o-- Game
+    SpiderView o-- DragState
+
+    SpiderView ..> Column
+    SpiderView ..> Card
+    SpiderView ..> Sequence
+    DragState ..> Sequence
+```
+
+### 3. Diagrama de Sequência – Movimento de Cartas
+```mermaid
+sequenceDiagram
+    actor Player
+    participant SpiderView
+    participant Game
+    participant Column_from as Column(origem)
+    participant Column_to as Column(destino)
+
+    Player->>SpiderView: Arrasta cartas e solta sobre coluna destino
+    SpiderView->>SpiderView: target_column_from_point(x,y)
+    SpiderView->>Game: move(from_col, from_idx, to_col)
+
+    Game->>Column_from: movable_subsequence_from(from_idx)
+    Column_from-->>Game: Sequence(seq) ou None
+
+    Game->>Game: can_receive(Column_to, seq)?
+    alt movimento válido
+        Game->>Column_from: pop_n(len(seq))
+        Column_from-->>Game: Sequence(moved)
+        Game->>Column_to: push_seq(moved)
+
+        Game->>Column_from: reveal_top_if_needed()
+        Game->>Game: verifica K→A mononaipe no destino
+        Game->>Game: registra Move em historico
+        Game-->>SpiderView: True
+    else movimento inválido
+        Game-->>SpiderView: False
+    end
+
+    SpiderView-->>Player: Atualiza desenho conforme novo estado
+```
+
+### 4. Diagrama de Sequência – deal() + undo() de distribuição
+```mermaid
+sequenceDiagram
+    actor Player
+    participant SpiderView
+    participant Game
+    participant Stock
+    participant Col0 as Column[0..9]
+
+    Player->>SpiderView: Pressiona Espaço
+    SpiderView->>Game: deal()
+
+    Game->>Game: verifica colunas vazias?
+    Game->>Stock: verifica se len(cards) >= 10
+    alt pode distribuir
+        Game->>Game: cria Move(tipo="deal")
+        loop 10 colunas
+            Game->>Stock: pop()
+            Stock-->>Game: card
+            Game->>Col0: append(card)
+            Game->>Move: registra (col_idx, card) em deal_cartas
+        end
+        Game->>Game: historico.append(Move)
+        Game-->>SpiderView: True
+    else bloqueia distribuição
+        Game-->>SpiderView: False
+    end
+
+    Player->>SpiderView: Pressiona U (undo)
+    SpiderView->>Game: undo()
+
+    Game->>Game: move = historico.pop()
+    alt move.tipo == "deal"
+        loop reversed(move.deal_cartas)
+            Game->>Col0: pop()  # remove carta distribuída
+            Col0-->>Game: card
+            Game->>Stock: push(card face_down)
+        end
+        Game-->>SpiderView: True
+    end
+
+    SpiderView-->>Player: Atualiza mesa com estado anterior
 ```
